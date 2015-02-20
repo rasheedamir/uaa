@@ -23,11 +23,13 @@ import org.opensaml.saml2.metadata.provider.MetadataProviderException;
 import org.opensaml.xml.parse.BasicParserPool;
 import org.springframework.security.saml.metadata.ExtendedMetadata;
 import org.springframework.security.saml.metadata.ExtendedMetadataDelegate;
+import org.springframework.util.StringUtils;
 
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
@@ -39,12 +41,12 @@ public class IdentityProviderConfigurator {
 
 
     private String legacyIdpIdentityAlias;
-    private String legacyIdpMetaData;
+    private volatile String legacyIdpMetaData;
     private String legacyNameId;
     private int legacyAssertionConsumerIndex;
     private boolean legacyMetadataTrustCheck = true;
     private boolean legacyShowSamlLink = true;
-    private List<IdentityProviderDefinition> identityProviders = new LinkedList<>();
+    private volatile List<IdentityProviderDefinition> identityProviders = new LinkedList<>();
     private Timer metadataFetchingHttpClientTimer;
     private HttpClient httpClient;
     private BasicParserPool parserPool;
@@ -74,7 +76,34 @@ public class IdentityProviderConfigurator {
             }
             uniqueAlias.add(alias);
         }
-        return providerDefinitions;
+        return Collections.unmodifiableList(providerDefinitions);
+    }
+
+    public synchronized List<IdentityProviderDefinition> addIdentityProviderDefinition(IdentityProviderDefinition providerDefinition) {
+        if (providerDefinition==null) {
+            throw new NullPointerException();
+        }
+        if (!StringUtils.hasText(providerDefinition.getIdpEntityAlias())) {
+            throw new NullPointerException("SAML IDP Alias must be set");
+        }
+        for (IdentityProviderDefinition def : getIdentityProviderDefinitions()) {
+            if (providerDefinition.getIdpEntityAlias().equals(def.getIdpEntityAlias())) {
+                throw new IllegalArgumentException("Duplicate SAML IDP Alias:"+def.getIdpEntityAlias());
+            }
+        }
+        identityProviders.add(providerDefinition.clone());
+        return getIdentityProviderDefinitions();
+    }
+
+    public synchronized List<IdentityProviderDefinition> refreshProviders(List<IdentityProviderDefinition> definitions) {
+        LinkedList newProviders = new LinkedList();
+        for (IdentityProviderDefinition def : definitions) {
+            newProviders.add(def.clone());
+        }
+        //reset the legacy data so it doesn't become an IDP. We overwrite all of them
+        legacyIdpMetaData = null;
+        identityProviders = newProviders;
+        return getIdentityProviderDefinitions();
     }
 
     public List<ExtendedMetadataDelegate> getIdentityProviders() {
@@ -141,6 +170,7 @@ public class IdentityProviderConfigurator {
             extendedMetadata.setAlias(def.getIdpEntityAlias());
             FixedHttpMetaDataProvider fixedHttpMetaDataProvider = new FixedHttpMetaDataProvider(getMetadataFetchingHttpClientTimer(), getHttpClient(), adjustURIForPort(def.getMetaDataLocation()));
             fixedHttpMetaDataProvider.setParserPool(getParserPool());
+            //TODO - we have no way of actually instantiating this object unless it has a zero arg constructor
             fixedHttpMetaDataProvider.setSocketFactory(socketFactory.newInstance());
             ExtendedMetadataDelegate delegate = new ExtendedMetadataDelegate(fixedHttpMetaDataProvider, extendedMetadata);
             delegate.setMetadataTrustCheck(def.isMetadataTrustCheck());
