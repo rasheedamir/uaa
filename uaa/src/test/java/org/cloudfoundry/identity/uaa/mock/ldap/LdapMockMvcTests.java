@@ -242,9 +242,11 @@ public class LdapMockMvcTests extends TestClassNullifier {
         UsernamePasswordAuthentication token = new UsernamePasswordAuthentication("marissa2", "ldap");
 
         IdentityProviderValidationRequest request = new IdentityProviderValidationRequest(provider, token);
-
+        System.out.println("request = \n" + JsonUtils.writeValueAsString(request));
         //Happy Day Scenario
         MockHttpServletRequestBuilder post = post("/identity-providers/test")
+            .header("Accept", APPLICATION_JSON_VALUE)
+            .header("Content-Type", APPLICATION_JSON_VALUE)
             .header("Authorization", "Bearer " + zoneAdminToken)
             .contentType(APPLICATION_JSON)
             .content(JsonUtils.writeValueAsString(request))
@@ -254,6 +256,8 @@ public class LdapMockMvcTests extends TestClassNullifier {
             .andDo(print())
             .andExpect(status().isOk())
             .andReturn();
+
+        assertEquals("\"ok\"", result.getResponse().getContentAsString());
 
         //Correct configuration, invalid credentials
         token = new UsernamePasswordAuthentication("marissa2", "koala");
@@ -269,6 +273,7 @@ public class LdapMockMvcTests extends TestClassNullifier {
         result = mockMvc.perform(post)
             .andExpect(status().isExpectationFailed())
             .andReturn();
+        assertEquals("\"bad credentials\"", result.getResponse().getContentAsString());
 
         //Insufficent scope
         post = post("/identity-providers/test")
@@ -282,6 +287,7 @@ public class LdapMockMvcTests extends TestClassNullifier {
         result = mockMvc.perform(post)
             .andExpect(status().isForbidden())
             .andReturn();
+
 
         //Invalid LDAP configuration - change the password of search user
         definition = LdapIdentityProviderDefinition.searchAndBindMapGroupToScopes(
@@ -312,6 +318,7 @@ public class LdapMockMvcTests extends TestClassNullifier {
         result = mockMvc.perform(post)
             .andExpect(status().isBadRequest())
             .andReturn();
+        assertThat(result.getResponse().getContentAsString(), containsString("Caused by:"));
 
         //Invalid LDAP configuration - no ldap server
         definition = LdapIdentityProviderDefinition.searchAndBindMapGroupToScopes(
@@ -342,6 +349,7 @@ public class LdapMockMvcTests extends TestClassNullifier {
         result = mockMvc.perform(post)
             .andExpect(status().isBadRequest())
             .andReturn();
+        assertThat(result.getResponse().getContentAsString(), containsString("Caused by:"));
 
         //Invalid LDAP configuration - invalid search base
         definition = LdapIdentityProviderDefinition.searchAndBindMapGroupToScopes(
@@ -372,6 +380,7 @@ public class LdapMockMvcTests extends TestClassNullifier {
         result = mockMvc.perform(post)
             .andExpect(status().isBadRequest())
             .andReturn();
+        assertThat(result.getResponse().getContentAsString(), containsString("Caused by:"));
     }
 
     @Test

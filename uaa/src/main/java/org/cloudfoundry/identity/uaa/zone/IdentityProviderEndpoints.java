@@ -19,6 +19,7 @@ import org.cloudfoundry.identity.uaa.authentication.manager.LdapLoginAuthenticat
 import org.cloudfoundry.identity.uaa.ldap.LdapIdentityProviderDefinition;
 import org.cloudfoundry.identity.uaa.scim.ScimGroupExternalMembershipManager;
 import org.cloudfoundry.identity.uaa.scim.ScimGroupProvisioning;
+import org.cloudfoundry.identity.uaa.util.JsonUtils;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -30,6 +31,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.util.List;
 
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
@@ -83,7 +86,8 @@ public class IdentityProviderEndpoints {
     }
 
     @RequestMapping(value = "test", method = POST)
-    public ResponseEntity<Void> testIdentityProvider(@RequestBody IdentityProviderValidationRequest body) {
+    public ResponseEntity<String> testIdentityProvider(@RequestBody IdentityProviderValidationRequest body) {
+        String exception = "ok";
         HttpStatus status = OK;
         //create the LDAP IDP
         DynamicLdapAuthenticationManager manager = new DynamicLdapAuthenticationManager(
@@ -100,17 +104,26 @@ public class IdentityProviderEndpoints {
             }
         } catch (BadCredentialsException x) {
             status = EXPECTATION_FAILED;
+            exception = "bad credentials";
         } catch (InternalAuthenticationServiceException x) {
             status = BAD_REQUEST;
+            exception = getExceptionString(x);
         } catch (Exception x) {
             logger.debug("Identity provider validation failed.", x);
             status = INTERNAL_SERVER_ERROR;
+            exception = "check server logs";
         }finally {
             //destroy IDP
             manager.destroy();
         }
         //return results
-        return new ResponseEntity<>(status);
+        return new ResponseEntity<>(JsonUtils.writeValueAsString(exception), status);
+    }
+
+    protected String getExceptionString(Exception x) {
+        StringWriter writer = new StringWriter();
+        x.printStackTrace(new PrintWriter(writer));
+        return writer.getBuffer().toString();
     }
 
     protected static class NoOpLdapLoginAuthenticationManager extends LdapLoginAuthenticationManager {
